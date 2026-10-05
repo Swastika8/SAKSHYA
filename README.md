@@ -2,6 +2,8 @@
 
 A runnable, local prototype for people in India facing online harassment or image-based abuse. It moves from a calm triage to a private evidence inventory, cited guidance, and editable documents. **Guidance, not legal advice.** The app does not file reports, establish guilt, or guarantee court admissibility.
 
+##Deployed Link: https://sakshya-two.vercel.app/
+
 ## Start on Windows 11 / PowerShell
 
 Prerequisites: Python 3.11+ and a current Node.js LTS release (Node 22+ recommended). Tested here with Python 3.13 and Node 24. The Python virtual environment lives at `Backend\.venv`.
