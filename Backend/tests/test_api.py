@@ -195,3 +195,26 @@ def test_helplines_and_cors():
         },
     )
     assert r.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_cors_allowed_and_disallowed_origins():
+    allowed = client.options(
+        "/api/extract",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert allowed.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+    disallowed = client.options(
+        "/api/extract",
+        headers={
+            "Origin": "https://malicious.example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert "access-control-allow-origin" not in disallowed.headers
+

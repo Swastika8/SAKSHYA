@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -7,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 # No server, SDK or HTTP-client logs may include user text or request bodies.
 logging.disable(logging.CRITICAL)
 from .routers.api import router
@@ -14,7 +16,7 @@ from .routers.api import router
 app = FastAPI(title="Sakshya", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
