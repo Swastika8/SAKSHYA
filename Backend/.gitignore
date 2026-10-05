@@ -1,0 +1,6 @@
+.venv/
+.env
+.runtime-host
+.model-cache/
+__pycache__/
+.pytest_cache/

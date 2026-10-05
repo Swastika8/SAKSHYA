@@ -1,0 +1,13 @@
+[
+ {"name":"National Cyber Crime Reporting Portal","platform":"all","source_url":"https://cybercrime.gov.in/","note":"Review the official reporting instructions. This app does not submit a report."},
+ {"name":"StopNCII.org","platform":"all","audience":"adult","source_url":"https://stopncii.org/","note":"On-device hashing for eligible adults and images taken at age 18 or older. Participating platforms only; removal is not guaranteed."},
+ {"name":"Take It Down","platform":"all","audience":"minor","source_url":"https://takeitdown.ncmec.org/","note":"For images taken before age 18. Do not download, send or share images to use the service; review its eligibility instructions."},
+ {"name":"Instagram reporting","platform":"Instagram","source_url":"https://help.instagram.com/165828726894770/","note":"Use the platform's report menu for the relevant content or account."},
+ {"name":"Facebook reporting","platform":"Facebook","source_url":"https://www.facebook.com/help/181495968648557","note":"Review reporting instructions on the platform."},
+ {"name":"WhatsApp reporting","platform":"WhatsApp","source_url":"https://faq.whatsapp.com/1142481766359885","note":"Review the block and report instructions."},
+ {"name":"X reporting","platform":"Twitter","source_url":"https://help.x.com/en/safety-and-security/report-abusive-behavior","note":"Review the platform's reporting options."},
+ {"name":"X reporting","platform":"X","source_url":"https://help.x.com/en/safety-and-security/report-abusive-behavior","note":"Review the platform's reporting options."},
+ {"name":"Telegram reporting","platform":"Telegram","source_url":"https://telegram.org/faq#q-how-do-i-report-illegal-content","note":"Review the platform's reporting options."},
+ {"name":"Snapchat reporting","platform":"Snapchat","source_url":"https://help.snapchat.com/hc/en-us/articles/7012399221652","note":"Review the platform's reporting options."},
+ {"name":"YouTube reporting","platform":"YouTube","source_url":"https://support.google.com/youtube/answer/2802027","note":"Review the platform's reporting options."}
+]

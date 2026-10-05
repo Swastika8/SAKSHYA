@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Local Environment & Runtime Secrets
+.env
+.env.local
+.env.*.local
+.runtime-host
+
+# Build outputs & caches
+.next/
+.pytest_cache/
+.model-cache/
+*.tsbuildinfo
+test-results/
+playwright-report/
+
+# Operating system files
+.DS_Store
+Thumbs.db
