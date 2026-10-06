@@ -217,4 +217,3 @@ def test_cors_allowed_and_disallowed_origins():
         },
     )
     assert "access-control-allow-origin" not in disallowed.headers
-

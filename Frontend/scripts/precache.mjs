@@ -16,10 +16,13 @@ const files = [
   "/",
   "/manifest.webmanifest",
   "/icon.svg",
+  "/preprocess-worker.js",
   "/icon-192.png",
   "/icon-512.png",
   ...(await walk(".next/static", "/_next/static")),
   ...(await walk("public/ocr", "/ocr")),
+  ...(await walk("public/d", "/d")),
+  ...(await walk("public/fonts", "/fonts")),
 ];
 await writeFile("public/precache.json", JSON.stringify(files));
 const buildId = (await readFile(".next/BUILD_ID", "utf8")).trim();

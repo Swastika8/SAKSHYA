@@ -1,5 +1,5 @@
 /* Only public application assets are cached. Never API requests or case content. */
-const CACHE = "sakshya-shell-hUiX-GMIJZEM-CBX97_gI";
+const CACHE = "sakshya-shell-3WYPQTUHSf3EWt_q6R9WZ";
 self.addEventListener("install", (event) =>
   event.waitUntil(
     (async () => {
@@ -30,12 +30,19 @@ self.addEventListener("fetch", (event) => {
   )
     return;
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/")));
+    event.respondWith(
+      fetch(request).catch(() =>
+        caches.match(url.pathname.startsWith("/d/") ? url.pathname : "/"),
+      ),
+    );
     return;
   }
   if (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/ocr/") ||
+    url.pathname.startsWith("/d/") ||
+    url.pathname.startsWith("/fonts/") ||
+    url.pathname === "/preprocess-worker.js" ||
     url.pathname.startsWith("/icon") ||
     url.pathname === "/manifest.webmanifest"
   )

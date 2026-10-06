@@ -52,13 +52,28 @@ def evidence_text(entries):
 def draft(req: DraftRequest):
     c = req.case
     headings = LOCALIZED[req.lang]["headings"]
-    facts = f'Platform: {c.platform or "[fill in]"}\nAccounts / URLs: {c.usernames or "[fill in]"}\nIncident dates: {c.dates or "[fill in]"}\nPerson under 18: {"Yes" if c.is_minor else "No / not indicated"}\nAccused details (if known): {c.accused or "[unknown]"}\n\nAccount of events (as provided; not independently verified):\n{c.description or "[describe events in your own words]"}'
+    facts = f'Platform: {c.platform or "[fill in]"}\nAccounts / URLs: {c.usernames or "[fill in]"}\nIncident dates: {c.dates or "[fill in]"}\nPerson under 18: {"Yes" if c.is_minor else "No / not indicated"}\nAccused details (if known): {c.accused or "[unknown]"}\n\nAccount of events (as provided; not independently verified):\n{c.statement or c.description or "[describe events in your own words]"}'
     evidence = evidence_text(req.evidence)
     status = chain_status(req.evidence)
     common = f"\n\n{headings['evidence']}\nChain check: {status}\n{evidence}\n\nA hash comparison can detect changed bytes against a trusted hash. This timeline does not independently prove authenticity, authorship, logging time or legal admissibility. Keep originals safe."
     if req.kind == "complaint":
+        # Legal citations always come from the reviewed local corpus, never the LLM.
+        from .rag import retriever
+
+        provisions = retriever().retrieve(c.scenario + " " + c.description, c.is_minor)
+        citations = (
+            "\n\nPotential provisions for professional review (not a legal conclusion; needs verification):\n"
+            + "\n".join(
+                f"{p['act']} — section {p['section']}: {p['title']}\nSource: {p['source_url']}"
+                for p in provisions
+            )
+            if provisions
+            else ""
+        )
+
         body = (
             f"To: The Station House Officer / Cyber Crime Cell\nPolice station / district: ____________________\nComplainant name and safe contact: ____________________\n\nSubject: Request to record and investigate online harassment\n\n{facts}\n\nI request that the reported conduct be assessed, relevant platform records preserved, and appropriate protection and investigation considered. Please provide an acknowledgement or reference number and contact me only through my stated safe channel. I have described facts to the best of my knowledge; I request advice on the applicable provisions.\n\nPlace / date: ____________________\nSignature: ____________________"
+            + citations
             + common
         )
     elif req.kind == "takedown":

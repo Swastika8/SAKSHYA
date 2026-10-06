@@ -6,7 +6,7 @@ export async function api(path: string, data: unknown, pdf = false) {
     body: JSON.stringify(data),
     cache: "no-store",
     credentials: "omit",
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(90000),
   });
   if (!response.ok) throw new Error("api");
   return pdf ? response.blob() : response.json();

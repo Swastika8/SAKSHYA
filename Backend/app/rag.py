@@ -21,7 +21,8 @@ class Retriever:
             for p in CORPUS
         ]
         mode = os.getenv("RAG_MODE", "auto")
-        if mode != "tfidf":
+        cached_model = any((ROOT / ".model-cache").glob("**/config.json"))
+        if mode == "transformer" or (mode == "auto" and cached_model):
             try:
                 from sentence_transformers import SentenceTransformer
 
@@ -68,7 +69,7 @@ class Retriever:
         if minor:
             child = [i for i in ranked if CORPUS[i].get("minor_only")]
             ranked = list(dict.fromkeys(child[:2] + ranked))
-        return [CORPUS[i] for i in ranked[:6]]
+        return [CORPUS[i] for i in ranked[:8]]
 
 
 @lru_cache(maxsize=1)

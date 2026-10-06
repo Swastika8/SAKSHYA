@@ -1,23 +1,57 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import Response
-from ..schemas import ExtractRequest, GuidanceRequest, DraftRequest, Extraction
+from ..schemas import (
+    ExtractRequest,
+    GuidanceRequest,
+    DraftRequest,
+    Extraction,
+    StatementRequest,
+)
 from .. import llm
 from ..rag import retriever, routes
 from ..pdfgen import draft, make_pdf, DISCLAIMER
+from ..rate_limit import quota
 
 router = APIRouter(prefix="/api")
 
 
 @router.post("/extract", response_model=Extraction)
-async def extract(req: ExtractRequest):
-    return await llm.extract(req.text, req.lang)
+async def extract(req: ExtractRequest, request: Request):
+    use_ai = (
+        req.ai_assist
+        and llm.provider() != "mock"
+        and quota.allow(request.client.host if request.client else "unknown")
+    )
+    return await llm.extract(req.text, req.lang, use_ai)
+
+
+@router.get("/ai/status")
+def ai_status():
+    return llm.status()
+
+
+@router.post("/draft/statement")
+async def incident_statement(req: StatementRequest, request: Request):
+    use_ai = (
+        req.ai_assist
+        and llm.provider() != "mock"
+        and quota.allow(request.client.host if request.client else "unknown")
+    )
+    return await llm.statement(req, use_ai)
 
 
 @router.post("/guidance")
-async def guidance(req: GuidanceRequest):
+async def guidance(req: GuidanceRequest, request: Request):
     text = req.scenario + " " + req.details.description
     items = retriever().retrieve(text, req.is_minor)
-    why = await llm.explanations(items, text)
+    use_ai = (
+        req.ai_assist
+        and llm.provider() != "mock"
+        and quota.allow(request.client.host if request.client else "unknown")
+    )
+    ranked = await llm.rank(items, text, use_ai)
+    why = {p["id"]: p["explanations"][index] for p, index in ranked}
+    items = [p for p, _ in ranked]
     provisions = [
         {
             k: v

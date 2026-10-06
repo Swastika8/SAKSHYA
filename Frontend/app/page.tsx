@@ -4,6 +4,19 @@ import { I18n, useI18n, type Key, type Lang } from "@/lib/i18n";
 import { append, sha256, verify, type Evidence } from "@/lib/chain";
 import * as vault from "@/lib/vault";
 import { api, download } from "@/lib/api";
+import { AIAssist, useAIConsent } from "@/components/AIAssist";
+import { performExit } from "@/lib/exit";
+import {
+  ShieldCheck,
+  LockKeyhole,
+  FileText,
+  Camera,
+  MessageCircle,
+  Send,
+  Globe,
+} from "lucide-react";
+import { BatchOCR } from "@/components/BatchOCR";
+import { flushSync } from "react-dom";
 type Screen =
   | "home"
   | "triage"
@@ -21,6 +34,7 @@ type Case = {
   accused: string;
   scenario: string;
   is_minor: boolean;
+  statement: string;
 };
 type Guidance = {
   provisions: {
@@ -43,6 +57,7 @@ const emptyCase: Case = {
   accused: "",
   scenario: "",
   is_minor: false,
+  statement: "",
 };
 const stages: Screen[] = [
   "triage",
@@ -50,7 +65,6 @@ const stages: Screen[] = [
   "details",
   "guidance",
   "documents",
-  "checklist",
 ];
 const scenarios = {
   images: "leaked or deepfaked images",
@@ -62,33 +76,26 @@ const BSA =
   "https://www.indiacode.nic.in/indiacode/bitstream/123456789/20063/1/aa202347.pdf";
 const POCSO = "https://www.indiacode.nic.in/handle/123456789/17804";
 function Icon({ name = "shield" }: { name?: string }) {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      aria-hidden="true"
-    >
-      {name === "lock" ? (
-        <>
-          <rect x="5" y="10" width="14" height="11" rx="3" />
-          <path d="M8 10V7a4 4 0 018 0v3M12 14v3" />
-        </>
-      ) : name === "file" ? (
-        <>
-          <path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6" />
-        </>
-      ) : (
-        <>
-          <path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6z" />
-          <path d="m8 12 3 3 5-6" />
-        </>
-      )}
-    </svg>
-  );
+  const icons: Record<string, typeof ShieldCheck> = {
+    shield: ShieldCheck,
+    lock: LockKeyhole,
+    file: FileText,
+    instagram: Camera,
+    whatsapp: MessageCircle,
+    telegram: Send,
+    facebook: Globe,
+  };
+  const Component = icons[name.toLowerCase()] || FileText;
+  return <Component size={24} strokeWidth={1.6} aria-hidden="true" />;
+}
+function cover(id: string) {
+  return id.startsWith("pocso") || id === "it67b"
+    ? "coverChild"
+    : ["bns351", "bns78"].includes(id)
+      ? "coverThreats"
+      : ["it66c", "it66d", "bns356"].includes(id)
+        ? "coverIdentity"
+        : "coverPrivacy";
 }
 function Link({ href, children }: { href: string; children: ReactNode }) {
   return (
@@ -111,6 +118,8 @@ export default function Page() {
 }
 function App() {
   const { t, lang, setLang } = useI18n();
+  const ai = useAIConsent();
+  const [statementLabel, setStatementLabel] = useState("");
   const [screen, setScreen] = useState<Screen>("home");
   const [question, setQuestion] = useState(0);
   const [showDanger, setShowDanger] = useState(false);
@@ -128,6 +137,13 @@ function App() {
   const [demo, setDemo] = useState(false);
   const [status, setStatus] = useState<Key | null>(null);
   const [busy, setBusy] = useState(false);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (!busy) return;
+    const timer = setTimeout(() => setSlow(true), 8000);
+    return () => clearTimeout(timer);
+  }, [busy]);
   const [offline, setOffline] = useState(false);
   const [chainResult, setChainResult] = useState<{
     ok: boolean;
@@ -137,23 +153,22 @@ function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [platform, setPlatform] = useState("");
   const [note, setNote] = useState("");
-  const [ocrFile, setOcrFile] = useState<File | null>(null);
-  const ocrInput = useRef<HTMLInputElement>(null);
-  const [ocrLang, setOcrLang] = useState("eng");
+  const [fileNotes, setFileNotes] = useState<Record<number, string>>({});
+  const [saveProgress, setSaveProgress] = useState("");
+  const [search, setSearch] = useState("");
+  const [autoFields, setAutoFields] = useState<string[]>([]);
+  const [largeText, setLargeText] = useState(false);
   const [ocrText, setOcrText] = useState("");
-  const [ocrProgress, setOcrProgress] = useState<number | null>(null);
   const [guidance, setGuidance] = useState<Guidance | null>(null);
   const [drafts, setDrafts] = useState<
     Partial<Record<Kind, { title: string; body: string }>>
   >({});
   const [checks, setChecks] = useState<Record<string, boolean>>({});
   const revision = useRef(0);
-  const worker = useRef<Awaited<
-    ReturnType<(typeof import("tesseract.js"))["createWorker"]>
-  > | null>(null);
   const workId = useRef(0);
   const lastEscape = useRef(0);
   function go(next: Screen) {
+    history.replaceState({ step: next }, "", location.pathname);
     setScreen(next);
     setStatus(null);
     window.scrollTo({ top: 0 });
@@ -161,21 +176,22 @@ function App() {
   function lock() {
     revision.current++;
     workId.current++;
-    void worker.current?.terminate();
-    worker.current = null;
     setSession(null);
     setPass("");
     setEntries([]);
     setFiles([]);
-    setOcrFile(null);
     setOcrText("");
-    setOcrProgress(null);
     setCase(emptyCase);
+    setStatementLabel("");
     setGuidance(null);
     setDrafts({});
     setDemo(false);
     setChainResult(null);
     setNote("");
+    setFileNotes({});
+    setSearch("");
+    setAutoFields([]);
+    setSaveProgress("");
     setPlatform("");
     setBusy(false);
     setStatus("clearSession");
@@ -185,8 +201,7 @@ function App() {
     setScreen("vault");
   }
   function quickExit() {
-    lock();
-    window.location.replace("https://www.google.com/");
+    performExit(() => flushSync(lock));
   }
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -200,7 +215,7 @@ function App() {
     return () => window.removeEventListener("keydown", handler);
   });
   useEffect(() => {
-    heading.current?.focus();
+    heading.current?.focus({ preventScroll: true });
   }, [screen, question, showDanger, showMinor]);
   useEffect(() => {
     if (help) dialog.current?.showModal();
@@ -229,6 +244,7 @@ function App() {
   }, [lang]);
   function changeCase(key: keyof Case, value: string | boolean) {
     setCase((c) => ({ ...c, [key]: value }));
+    setAutoFields((fields) => fields.filter((field) => field !== key));
     setGuidance(null);
     setDrafts({});
   }
@@ -271,7 +287,9 @@ function App() {
     }
     await run(async () => {
       try {
+        const current = revision.current;
         const open = await vault.unlock(pass);
+        if (current !== revision.current) return;
         setSession({ key: open.key, salt: open.salt });
         setEntries(open.entries);
         setPass("");
@@ -284,6 +302,7 @@ function App() {
   async function loadDemo() {
     if (!session) return;
     await run(async () => {
+      const current = revision.current;
       let next: Evidence[] = [];
       next = await append(
         next,
@@ -310,6 +329,7 @@ function App() {
         "2026-10-05T10:05:00.000Z",
       );
       await saveEntries(next, true);
+      if (current !== revision.current) return;
       setDemo(true);
       setCase({
         ...emptyCase,
@@ -346,14 +366,18 @@ function App() {
         setStatus("checkFirst");
         return;
       }
-      for (const f of files)
+      for (const [i, f] of files.entries()) {
+        setSaveProgress(`${i + 1}/${files.length}`);
         next = await append(next, {
           fileName: f.name,
           fileHash: await sha256(await f.arrayBuffer()),
           platform,
-          note,
+          note: fileNotes[i] ?? note,
         });
+      }
       await saveEntries(next);
+      setSaveProgress("");
+      setFileNotes({});
       setFiles([]);
       if (fileInput.current) fileInput.current.value = "";
       setNote("");
@@ -375,55 +399,31 @@ function App() {
       setChainResult(await verify(stored));
     });
   }
-  async function readScreenshot() {
-    if (!ocrFile) {
-      setStatus("fileRequired");
-      return;
-    }
-    if (ocrFile.size > 25 * 1024 * 1024 || !ocrFile.type.startsWith("image/")) {
-      setStatus("fileLimit");
-      return;
-    }
-    const current = revision.current;
-    await run(async () => {
-      setOcrProgress(0);
-      try {
-        const { createWorker } = await import("tesseract.js");
-        worker.current = await createWorker(ocrLang, 1, {
-          workerPath: "/ocr/worker.min.js",
-          corePath: "/ocr",
-          langPath: "/ocr/lang",
-          cacheMethod: "none",
-          logger: (m) => {
-            if (current === revision.current && m.status === "recognizing text")
-              setOcrProgress(Math.round(m.progress * 100));
-          },
-        });
-        const result = await worker.current.recognize(ocrFile);
-        if (current === revision.current)
-          setOcrText(result.data.text.slice(0, 12000));
-      } catch {
-        if (current === revision.current) setStatus("ocrError");
-      } finally {
-        await worker.current?.terminate();
-        worker.current = null;
-        if (current === revision.current) {
-          setOcrProgress(null);
-          setOcrFile(null);
-          if (ocrInput.current) ocrInput.current.value = "";
-        }
-      }
-    });
-  }
   async function extract() {
     await run(async () => {
       const current = revision.current;
-      const data = await api("extract", { text: ocrText, lang });
+      const data = await api("extract", {
+        text: ocrText,
+        lang,
+        ai_assist: ai.enabled,
+      });
       if (current !== revision.current) return;
+      setAutoFields([
+        ...(data.platform ? ["platform"] : []),
+        ...(data.usernames.length ||
+        data.urls.length ||
+        data.phone_numbers.length
+          ? ["usernames"]
+          : []),
+        ...(data.dates.length ? ["dates"] : []),
+        ...(data.summary ? ["description"] : []),
+      ]);
       setCase((c) => ({
         ...c,
         platform: data.platform || c.platform,
-        usernames: data.usernames.join(", ") || c.usernames,
+        usernames:
+          [...data.usernames, ...data.urls, ...data.phone_numbers].join(", ") ||
+          c.usernames,
         dates: data.dates.join(", ") || c.dates,
         description: data.summary || c.description,
         scenario:
@@ -435,11 +435,6 @@ function App() {
     });
   }
   async function getGuidance() {
-    if (!caseData.description.trim()) {
-      go("details");
-      setStatus("fieldRequired");
-      return;
-    }
     await run(async () => {
       const current = revision.current;
       const result = await api("guidance", {
@@ -447,10 +442,24 @@ function App() {
         details: caseData,
         lang,
         is_minor: caseData.is_minor,
+        ai_assist: ai.enabled,
       });
       if (current !== revision.current) return;
       setGuidance(result);
       go("guidance");
+    });
+  }
+  async function makeStatement() {
+    await run(async () => {
+      const current = revision.current;
+      const result = await api("draft/statement", {
+        case: caseData,
+        lang,
+        ai_assist: ai.enabled,
+      });
+      if (current !== revision.current) return;
+      changeCase("statement", result.body);
+      setStatementLabel(result.label);
     });
   }
   async function makeDraft(kind: Kind) {
@@ -484,7 +493,10 @@ function App() {
         true,
       );
       if (current !== revision.current) return;
-      download(blob, `sakshya-${kind}.pdf`);
+      download(
+        blob,
+        `${{ complaint: "Complaint", takedown: "Takedown", section63: "Section63", timeline: "Timeline" }[kind]}_${new Date().toISOString().slice(0, 10)}.pdf`,
+      );
       setStatus("pdfReady");
     });
   }
@@ -553,15 +565,20 @@ function App() {
   ) => (
     <label className={key === "description" ? "span-two" : ""} key={key}>
       {t(key)}
+      {autoFields.includes(key) && caseData[key] && (
+        <span className="source-tag">{t("fromScreenshot")}</span>
+      )}
       {key === "description" || key === "accused" ? (
         <textarea
           rows={key === "description" ? 5 : 2}
+          aria-label={t(key)}
           value={caseData[key]}
           maxLength={key === "description" ? 12000 : 2000}
           onChange={(e) => changeCase(key, e.target.value)}
         />
       ) : (
         <input
+          aria-label={t(key)}
           value={caseData[key]}
           maxLength={key === "usernames" ? 2000 : 500}
           onChange={(e) => changeCase(key, e.target.value)}
@@ -585,6 +602,14 @@ function App() {
           </span>
         </button>
         <div className="header-actions">
+          <button
+            className="text-size"
+            aria-label={t("sizeText")}
+            aria-pressed={largeText}
+            onClick={() => setLargeText((v) => !v)}
+          >
+            A+
+          </button>
           <label className="language">
             <span className="sr-only">{t("language")}</span>
             <select
@@ -625,12 +650,50 @@ function App() {
               aria-current={screen === stage ? "step" : undefined}
             >
               <span>{String(i + 1).padStart(2, "0")}</span>
-              {t(stage as Key)}
+              {t(
+                (
+                  [
+                    "understand",
+                    "saveProof",
+                    "checkDetails",
+                    "yourOptions",
+                    "yourDocuments",
+                  ] as Key[]
+                )[i],
+              )}
             </button>
           ))}
         </nav>
       )}
-      <main id="main" className={screen === "home" ? "home" : "workspace"}>
+      <main
+        style={{ fontSize: largeText ? "1.2em" : undefined }}
+        id="main"
+        className={screen === "home" ? "home" : "workspace"}
+      >
+        {screen !== "home" && (
+          <div className="utility-nav">
+            <button
+              onClick={() =>
+                go(stages[Math.max(0, stages.indexOf(screen) - 1)] || "home")
+              }
+            >
+              {t("back")}
+            </button>
+            <button onClick={() => go("checklist")}>{t("checklist")}</button>
+          </div>
+        )}
+        {screen === "home" && (
+          <details className="exit-guidance">
+            <summary>{t("browsingPrivacy")}</summary>
+            <p>{t("privateWindow")}</p>
+          </details>
+        )}
+        {busy && (
+          <div role="status" aria-live="polite" className="loading-card">
+            <div className="skeleton" />
+            <p>{slow ? t("waking") : t("busy")}</p>
+          </div>
+        )}
         {offline && (
           <p className="callout" role="status">
             {t("offline")}
@@ -651,6 +714,22 @@ function App() {
                   setShowMinor(false);
                   go("triage");
                 })}
+                <div className="home-choices">
+                  <button
+                    className="button secondary"
+                    onClick={() => go("vault")}
+                  >
+                    <Icon name="file" />
+                    {t("homeSave")}
+                  </button>
+                  <button
+                    className="button secondary"
+                    onClick={() => go("details")}
+                  >
+                    <Icon />
+                    {t("homeOptions")}
+                  </button>
+                </div>
                 <p className="small reassurance">{t("reassure")}</p>
               </div>
               <aside className="privacy-card">
@@ -659,6 +738,20 @@ function App() {
                 </span>
                 <h2>{t("local")}</h2>
                 <p>{t("localBody")}</p>
+                <div className="privacy-icons">
+                  <p>
+                    <Icon name="file" />
+                    {t("privateImages")}
+                  </p>
+                  <p>
+                    <Icon name="lock" />
+                    {t("privateVault")}
+                  </p>
+                  <p>
+                    <Icon />
+                    {t("privateAI")}
+                  </p>
+                </div>
                 <div className="privacy-rule" />
                 <span className="small">{t("privacyFooter")}</span>
               </aside>
@@ -829,6 +922,22 @@ function App() {
                           />
                         </label>
                         <p className="small">{t("fileHelp")}</p>
+                        {files.map((f, i) => (
+                          <label key={i}>
+                            {f.name} · {t("perFileNote")}
+                            <input
+                              maxLength={2000}
+                              value={fileNotes[i] ?? note}
+                              onChange={(e) =>
+                                setFileNotes((old) => ({
+                                  ...old,
+                                  [i]: e.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+                        ))}
+                        {saveProgress && <p role="status">{saveProgress}</p>}
                         <label>
                           {t("platform")}
                           <input
@@ -896,6 +1005,13 @@ function App() {
                     {t("vault")} <span className="count">{entries.length}</span>
                   </h2>
                 </div>
+                <label>
+                  {t("searchEvidence")}
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </label>
                 {chainResult && (
                   <div
                     role="status"
@@ -913,40 +1029,47 @@ function App() {
                     <p>{t("emptyVaultBody")}</p>
                   </div>
                 ) : (
-                  entries.map((e) => (
-                    <article
-                      className={`evidence card ${chainResult?.brokenIndex === e.index ? "broken" : ""}`}
-                      key={e.index}
-                    >
-                      <div className="evidence-top">
-                        <span className="number">
-                          {String(e.index).padStart(2, "0")}
-                        </span>
-                        <div>
-                          <h3>{e.fileName}</h3>
-                          <p className="small">
-                            {e.platform} · {e.timestamp}
-                          </p>
+                  entries
+                    .filter((e) =>
+                      `${e.fileName} ${e.platform} ${e.note}`
+                        .toLocaleLowerCase()
+                        .includes(search.toLocaleLowerCase()),
+                    )
+                    .map((e) => (
+                      <article
+                        className={`evidence card ${chainResult?.brokenIndex === e.index ? "broken" : ""}`}
+                        key={e.index}
+                      >
+                        <div className="evidence-top">
+                          <Icon name={e.platform || "file"} />
+                          <span className="number">
+                            {String(e.index).padStart(2, "0")}
+                          </span>
+                          <div>
+                            <h3>{e.fileName}</h3>
+                            <p className="small">
+                              {e.platform} · {e.timestamp}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <p>{e.note}</p>
-                      <details>
-                        <summary>{t("fileHash")}</summary>
-                        <dl>
-                          {(["fileHash", "prevHash", "entryHash"] as const).map(
-                            (key) => (
+                        <p>{e.note}</p>
+                        <details>
+                          <summary>{t("fileHash")}</summary>
+                          <dl>
+                            {(
+                              ["fileHash", "prevHash", "entryHash"] as const
+                            ).map((key) => (
                               <div key={key}>
                                 <dt>{t(key)}</dt>
                                 <dd>
                                   <code>{e[key]}</code>
                                 </dd>
                               </div>
-                            ),
-                          )}
-                        </dl>
-                      </details>
-                    </article>
-                  ))
+                            ))}
+                          </dl>
+                        </details>
+                      </article>
+                    ))
                 )}
                 {entries.length > 0 && (
                   <>
@@ -968,38 +1091,12 @@ function App() {
         {screen === "details" && (
           <>
             {intro("detailsTitle", "detailsSubtitle")}
+            <AIAssist ai={ai} />
             {caseData.is_minor && minorPanel()}
             <section className="card ocr-card">
               <h2>{t("ocrTitle")}</h2>
               <p>{t("ocrHelp")}</p>
-              <div className="form-grid">
-                <label>
-                  {t("ocrFile")}
-                  <input
-                    ref={ocrInput}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setOcrFile(e.target.files?.[0] || null)}
-                  />
-                </label>
-                <label>
-                  {t("ocrLanguage")}
-                  <select
-                    value={ocrLang}
-                    onChange={(e) => setOcrLang(e.target.value)}
-                  >
-                    <option value="eng">{t("english")}</option>
-                    <option value="hin">{t("hindi")}</option>
-                    <option value="mar">{t("marathi")}</option>
-                  </select>
-                </label>
-              </div>
-              {button("ocrRun", () => void readScreenshot(), true, !ocrFile)}
-              {ocrProgress !== null && (
-                <p role="status">
-                  {t("ocrWorking")} {ocrProgress}%
-                </p>
-              )}
+              <BatchOCR onText={setOcrText} />
               <label>
                 {t("ocrText")}
                 <textarea
@@ -1033,13 +1130,16 @@ function App() {
                 </label>
               </div>
               <p className="small">{t("textNotice")}</p>
-              {button("getGuidance", () => void getGuidance())}
+              <div className="page-actions">
+                {button("getGuidance", () => void getGuidance())}
+              </div>
             </section>
           </>
         )}
         {screen === "guidance" && (
           <>
             {intro("guidanceTitle", "guidanceSubtitle")}
+            <AIAssist ai={ai} />
             <p className="callout">
               {t("disclaimer")} · {t("legalEnglish")}
             </p>
@@ -1051,25 +1151,41 @@ function App() {
               </div>
             ) : (
               <>
-                <div className="provision-grid">
-                  {guidance.provisions.length === 0 ? (
-                    <p className="card">{t("noMatch")}</p>
-                  ) : (
-                    guidance.provisions.map((p) => (
-                      <article className="card provision" key={p.id}>
-                        <div className="badge">{t("verification")}</div>
-                        <p className="citation">
-                          {p.act} · § {p.section}
-                        </p>
-                        <h2>{p.title}</h2>
-                        <p>{p.plain_summary}</p>
-                        <h3>{t("why")}</h3>
-                        <p>{p.why_it_applies}</p>
-                        <Link href={p.source_url}>{t("source")}</Link>
-                      </article>
-                    ))
-                  )}
-                </div>
+                {guidance.provisions.length === 0 ? (
+                  <p className="card">{t("noMatch")}</p>
+                ) : (
+                  (
+                    [
+                      "coverThreats",
+                      "coverPrivacy",
+                      "coverIdentity",
+                      "coverChild",
+                    ] as const
+                  ).map((group) => {
+                    const matching = guidance.provisions.filter(
+                      (p) => cover(p.id) === group,
+                    );
+                    return matching.length ? (
+                      <section className="provision-group" key={group}>
+                        <h2>{t(group)}</h2>
+                        <div className="provision-grid">
+                          {matching.map((p) => (
+                            <article className="card provision" key={p.id}>
+                              <div className="badge">{t("verification")}</div>
+                              <h3>{p.title}</h3>
+                              <p>{p.why_it_applies}</p>
+                              <p>{p.plain_summary}</p>
+                              <p className="citation">
+                                {p.act} · § {p.section}
+                              </p>
+                              <Link href={p.source_url}>{t("source")}</Link>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null;
+                  })
+                )}
                 <section className="card">
                   <h2>{t("reporting")}</h2>
                   <p className="small">{t("external")}</p>
@@ -1105,6 +1221,23 @@ function App() {
         {screen === "documents" && (
           <>
             {intro("documentsTitle", "documentsSubtitle")}
+            <AIAssist ai={ai} />
+            <section className="card">
+              <h2>{t("statementHelper")}</h2>
+              <p>{t("statementHelp")}</p>
+              {button("statementHelper", () => void makeStatement(), true)}
+              {caseData.statement && (
+                <label>
+                  {statementLabel || t("statementPreview")}
+                  <textarea
+                    rows={8}
+                    maxLength={20000}
+                    value={caseData.statement}
+                    onChange={(e) => changeCase("statement", e.target.value)}
+                  />
+                </label>
+              )}
+            </section>
             <p className="callout">
               {t("disclaimer")} · {t("legalEnglish")}
             </p>

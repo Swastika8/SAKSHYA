@@ -36,14 +36,17 @@ test("synthetic full flow, OCR, encrypted storage, citations, PDFs, locales and 
   await page.getByRole("button", { name: "Demo mode", exact: true }).click();
   await page.getByRole("button", { name: "Verify chain", exact: true }).click();
   await expect(
-    page.getByText("All links verified", { exact: true }),
+    page.getByText(
+      "Nothing has been changed in this timeline. Compare saved digital fingerprints with originals for an independent check.",
+      { exact: true },
+    ),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Simulate tampering", exact: true })
     .click();
   await page.getByRole("button", { name: "Verify chain", exact: true }).click();
   await expect(
-    page.getByText("First broken link: entry 1", { exact: true }),
+    page.getByText("Something was changed at entry # 1", { exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: "test-results/qa/mobile-tamper.png",
@@ -203,20 +206,23 @@ test("synthetic full flow, OCR, encrypted storage, citations, PDFs, locales and 
   await page
     .getByRole("combobox", { name: "भाषा", exact: true })
     .selectOption("en");
-  await page.locator("nav").getByRole("button", { name: "Next steps" }).click();
+  await page
+    .locator(".utility-nav")
+    .getByRole("button", { name: "Next steps" })
+    .click();
   await page
     .getByLabel("Find a safe place and a trusted person to support you.")
     .check();
   await page.reload();
   await page.getByRole("button", { name: "Get help now", exact: true }).click();
-  await page.locator("nav").getByRole("button", { name: "Next steps" }).click();
+  await page
+    .locator(".utility-nav")
+    .getByRole("button", { name: "Next steps" })
+    .click();
   await expect(
     page.getByLabel("Find a safe place and a trusted person to support you."),
   ).toBeChecked();
-  await page
-    .locator("nav")
-    .getByRole("button", { name: "Evidence vault" })
-    .click();
+  await page.locator("nav").getByRole("button", { name: "Save proof" }).click();
   await page
     .getByLabel("Vault passphrase", { exact: true })
     .fill("Wrong passphrase 123");
@@ -238,12 +244,13 @@ test("synthetic full flow, OCR, encrypted storage, citations, PDFs, locales and 
   ).toBe(true);
   expect(errors).toEqual([]);
   // Intercept the neutral destination so this test makes no external navigation.
-  await page.route("https://www.google.com/**", (route) =>
-    route.fulfill({ body: "Neutral exit test" }),
+  await page.route(
+    /https:\/\/(www.google.com|en.wikipedia.org)\/|\/d\//,
+    (route) => route.fulfill({ body: "Neutral exit test" }),
   );
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
-  await expect(page).toHaveURL("https://www.google.com/");
+  await expect(page).toHaveURL(/google.com|wikipedia.org|\/d\//);
 });
 
 test("danger and minor path, desktop layout and persistent help", async ({

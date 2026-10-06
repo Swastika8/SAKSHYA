@@ -31,9 +31,7 @@ async function derive(pass: string, salt: Uint8Array<ArrayBuffer>) {
     ["encrypt", "decrypt"],
   );
 }
-export async function unlock(
-  pass: string,
-): Promise<{
+export async function unlock(pass: string): Promise<{
   entries: Evidence[];
   key: CryptoKey;
   salt: Uint8Array<ArrayBuffer>;

@@ -15,10 +15,7 @@ test("offline PWA, real file hashing, re-unlock and local Hindi/Marathi OCR", as
     )
     .toBe(true);
   await page.getByRole("button", { name: "Get help now", exact: true }).click();
-  await page
-    .locator("nav")
-    .getByRole("button", { name: "Evidence vault" })
-    .click();
+  await page.locator("nav").getByRole("button", { name: "Save proof" }).click();
   await page
     .getByRole("textbox", { name: "Vault passphrase", exact: true })
     .fill("Synthetic offline secret 2026");
@@ -33,7 +30,10 @@ test("offline PWA, real file hashing, re-unlock and local Hindi/Marathi OCR", as
   await page.getByRole("button", { name: "Hash and add to timeline" }).click();
   await page.getByRole("button", { name: "Verify chain", exact: true }).click();
   await expect(
-    page.getByText("All links verified", { exact: true }),
+    page.getByText(
+      "Nothing has been changed in this timeline. Compare saved digital fingerprints with originals for an independent check.",
+      { exact: true },
+    ),
   ).toBeVisible();
   await context.setOffline(true);
   await page.reload();
@@ -41,10 +41,7 @@ test("offline PWA, real file hashing, re-unlock and local Hindi/Marathi OCR", as
     "You deserve to feel safe.",
   );
   await page.getByRole("button", { name: "Get help now", exact: true }).click();
-  await page
-    .locator("nav")
-    .getByRole("button", { name: "Evidence vault" })
-    .click();
+  await page.locator("nav").getByRole("button", { name: "Save proof" }).click();
   await page
     .getByRole("textbox", { name: "Vault passphrase", exact: true })
     .fill("Synthetic offline secret 2026");
@@ -54,11 +51,14 @@ test("offline PWA, real file hashing, re-unlock and local Hindi/Marathi OCR", as
   ).toBeVisible();
   await page.getByRole("button", { name: "Verify chain", exact: true }).click();
   await expect(
-    page.getByText("All links verified", { exact: true }),
+    page.getByText(
+      "Nothing has been changed in this timeline. Compare saved digital fingerprints with originals for an independent check.",
+      { exact: true },
+    ),
   ).toBeVisible();
   await page
     .locator("nav")
-    .getByRole("button", { name: "Incident details" })
+    .getByRole("button", { name: "Check details" })
     .click();
   for (const [language, sample] of [
     ["hin", "नमस्ते यह एक परीक्षण है"],
